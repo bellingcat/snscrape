@@ -196,7 +196,7 @@ class TelegramChannelScraper(snscrape.base.Scraper):
 				}
 				timeTag = videoPlayer.find('time')
 				if timeTag is None:
-					_logger.warning(f'Could not find duration for video or GIF at {url}')
+					# Example of duration-less GIF: https://t.me/thisisatestchannel19451923/3
 					cls = Gif
 				else:
 					cls = Video
