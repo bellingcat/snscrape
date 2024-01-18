@@ -196,6 +196,7 @@ class TelegramChannelScraper(snscrape.base.Scraper):
 				}
 				timeTag = videoPlayer.find('time')
 				if timeTag is None:
+					_logger.warning(f'Could not find duration for video or GIF at {url}')
 					cls = Gif
 				else:
 					cls = Video
@@ -219,8 +220,6 @@ class TelegramChannelScraper(snscrape.base.Scraper):
 					else:
 						_logger.warning(f'Could not process link preview image on {url}')
 				linkPreview = LinkPreview(**kwargs)
-				if kwargs['href'] in outlinks:
-					outlinks.remove(kwargs['href'])
 
 			viewsSpan = post.find('span', class_ = 'tgme_widget_message_views')
 			views = None if viewsSpan is None else _parse_num(viewsSpan.text)
@@ -239,13 +238,14 @@ class TelegramChannelScraper(snscrape.base.Scraper):
 			return
 		nextPageUrl = ''
 		while True:
+			print("About to yield from get_items")
 			yield from self._soup_to_items(soup, r.url)
-			try:
-				if soup.find('a', attrs = {'class': 'tgme_widget_message_date'}, href = True)['href'].split('/')[-1] == '1':
+			dateElt = soup.find('a', attrs = {'class': 'tgme_widget_message_date'}, href = True)
+			if dateElt and 'href' in dateElt.attrs:
+				urlPieces = dateElt['href'].split('/')
+				if urlPieces and urlPieces[-1] == '1':
 					# if message 1 is the first message in the page, terminate scraping
 					break
-			except:
-				pass
 			pageLink = soup.find('a', attrs = {'class': 'tme_messages_more', 'data-before': True})
 			if not pageLink:
 				# some pages are missing a "tme_messages_more" tag, causing early termination
