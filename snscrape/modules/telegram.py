@@ -152,7 +152,7 @@ class TelegramChannelScraper(snscrape.base.Scraper):
 						imageUrls = _STYLE_MEDIA_URL_PATTERN.findall(style)
 						if len(imageUrls) == 1:
 							media.append(Photo(url = imageUrls[0]))
-						continue
+
 				if _SINGLE_MEDIA_LINK_PATTERN.match(link['href']):
 					style = link.attrs.get('style', '')
 					imageUrls = _STYLE_MEDIA_URL_PATTERN.findall(style)
@@ -161,48 +161,22 @@ class TelegramChannelScraper(snscrape.base.Scraper):
 						# resp = self._get(image[0])
 						# encoded_string = base64.b64encode(resp.content)
 					# Individual photo or video link
-					continue
+
 				if link.text.startswith('@'):
 					mentions.append(link.text.strip('@'))
-					continue
+
 				if link.text.startswith('#'):
 					hashtags.append(link.text.strip('#'))
-					continue
+
+				if 'tgme_widget_message_voice_player' in link.get('class', []):
+					media.append(_parse_voice_message(link))
+					
+				if 'tgme_widget_message_video_player' in link.get('class', []):
+					media.append(_parse_video_message(link))
+
 				href = urllib.parse.urljoin(pageUrl, link['href'])
 				if (href not in outlinks) and (href != rawUrl) and (href != forwardedUrl):
 					outlinks.append(href)
-
-			for voicePlayer in post.find_all('a', {'class': 'tgme_widget_message_voice_player'}):
-				audioUrl = voicePlayer.find('audio')['src']
-				durationStr = voicePlayer.find('time').text
-				duration = _durationStrToSeconds(durationStr)
-				barHeights = [float(s['style'].split(':')[-1].strip(';%')) for s in voicePlayer.find('div', {'class': 'bar'}).find_all('s')]
-
-				media.append(VoiceMessage(url = audioUrl, duration = duration, bars = barHeights))
-
-			for videoPlayer in post.find_all('a', {'class': 'tgme_widget_message_video_player'}):
-				iTag = videoPlayer.find('i')
-				if iTag is None:
-					videoUrl = None 
-					videoThumbnailUrl = None
-				else:
-					style = iTag['style']
-					videoThumbnailUrl = _STYLE_MEDIA_URL_PATTERN.findall(style)[0]
-					videoTag = videoPlayer.find('video')
-					videoUrl = None if videoTag is None else videoTag['src']
-				mKwargs = {
-					'thumbnailUrl': videoThumbnailUrl,
-					'url': videoUrl,
-				}
-				timeTag = videoPlayer.find('time')
-				if timeTag is None:
-					# Example of duration-less GIF: https://t.me/thisisatestchannel19451923/3
-					cls = Gif
-				else:
-					cls = Video
-					durationStr = videoPlayer.find('time').text
-					mKwargs['duration'] = _durationStrToSeconds(durationStr)
-				media.append(cls(**mKwargs))
 
 			linkPreview = None
 			if (linkPreviewA := post.find('a', class_ = 'tgme_widget_message_link_preview')):
@@ -250,10 +224,10 @@ class TelegramChannelScraper(snscrape.base.Scraper):
 			if not pageLink:
 				# some pages are missing a "tme_messages_more" tag, causing early termination
 				if '=' not in nextPageUrl:
-					nextPageUrl =  soup.find('link', attrs = {'rel': 'canonical'}, href = True)['href']
-				nextPostIndex = int(nextPageUrl.split('=')[-1]) - 20
+					nextPageUrl = soup.find('link', attrs = {'rel': 'prev'}, href = True)['href']
+				nextPostIndex = int(nextPageUrl.split('=')[-1])
 				if nextPostIndex > 20:
-					pageLink = {'href': nextPageUrl.split('=')[0] + f'={nextPostIndex}'}
+					pageLink = {'href': nextPageUrl}
 				else:
 					break
 			nextPageUrl = urllib.parse.urljoin(r.url, pageLink['href'])
@@ -334,3 +308,33 @@ def _telegramResponseOkCallback(r):
 		return (True, None)
 	return (False, f'{r.status_code=}')
 	
+def _parse_voice_message(voicePlayer):
+	audioUrl = voicePlayer.find('audio')['src']
+	durationStr = voicePlayer.find('time').text
+	duration = _durationStrToSeconds(durationStr)
+	barHeights = [float(s['style'].split(':')[-1].strip(';%')) for s in voicePlayer.find('div', {'class': 'bar'}).find_all('s')]
+	return VoiceMessage(url = audioUrl, duration = duration, bars = barHeights)
+
+def _parse_video_message(videoPlayer):
+	iTag = videoPlayer.find('i')
+	if iTag is None:
+		videoUrl = None 
+		videoThumbnailUrl = None
+	else:
+		style = iTag['style']
+		videoThumbnailUrl = _STYLE_MEDIA_URL_PATTERN.findall(style)[0]
+		videoTag = videoPlayer.find('video')
+		videoUrl = None if videoTag is None else videoTag['src']
+	mKwargs = {
+		'thumbnailUrl': videoThumbnailUrl,
+		'url': videoUrl,
+	}
+	timeTag = videoPlayer.find('time')
+	if timeTag is None:
+		# Example of duration-less GIF: https://t.me/thisisatestchannel19451923/3
+		cls = Gif
+	else:
+		cls = Video
+		durationStr = videoPlayer.find('time').text
+		mKwargs['duration'] = _durationStrToSeconds(durationStr)
+	return cls(**mKwargs)
