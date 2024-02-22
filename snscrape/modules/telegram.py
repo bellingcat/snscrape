@@ -212,7 +212,6 @@ class TelegramChannelScraper(snscrape.base.Scraper):
 			return
 		nextPageUrl = ''
 		while True:
-			print("About to yield from get_items")
 			yield from self._soup_to_items(soup, r.url)
 			dateElt = soup.find('a', attrs = {'class': 'tgme_widget_message_date'}, href = True)
 			if dateElt and 'href' in dateElt.attrs:
