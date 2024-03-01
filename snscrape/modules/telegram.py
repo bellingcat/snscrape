@@ -219,17 +219,11 @@ class TelegramChannelScraper(snscrape.base.Scraper):
 				if urlPieces and urlPieces[-1] == '1':
 					# if message 1 is the first message in the page, terminate scraping
 					break
-			pageLink = soup.find('a', attrs = {'class': 'tme_messages_more', 'data-before': True})
-			if not pageLink:
-				# some pages are missing a "tme_messages_more" tag, causing early termination
-				if '=' not in nextPageUrl:
-					nextPageUrl = soup.find('link', attrs = {'rel': 'prev'}, href = True)['href']
-				nextPostIndex = int(nextPageUrl.split('=')[-1])
-				if nextPostIndex > 20:
-					pageLink = {'href': nextPageUrl}
-				else:
-					break
-			nextPageUrl = urllib.parse.urljoin(r.url, pageLink['href'])
+			if pageLink := soup.find('link', attrs = {'rel': 'prev'}, href = True):
+				nextPageUrl = urllib.parse.urljoin(r.url, pageLink['href'])
+			else:
+				nextPostIndex = int(soup.find('div', attrs = {'class': 'tgme_widget_message', 'data-post': True})["data-post"].split("/")[-1])
+				nextPageUrl = urllib.parse.urljoin(r.url, r.url.split('?')[0] + f'?before={nextPostIndex}')
 			r = self._get(nextPageUrl, headers = self._headers, responseOkCallback = _telegramResponseOkCallback)
 			if r.status_code != 200:
 				raise snscrape.base.ScraperException(f'Got status code {r.status_code}')
