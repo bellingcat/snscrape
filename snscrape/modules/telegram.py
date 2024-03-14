@@ -338,7 +338,7 @@ def _parse_video_message(videoPlayer):
 
 
 class TestTelegramChannelScraper(unittest.TestCase):
-	"""Run suite by directly calling this file."""
+	"""Run suite by directly running this file."""
 
 	@staticmethod
 	def execute_with_timeout(func, timeout=10):
@@ -383,7 +383,7 @@ class TestTelegramChannelScraper(unittest.TestCase):
 		self.execute_with_timeout(scrape_two_pages)
 
 	def test_scraping_termination_small_post_count(self):
-		"""Test scraping always terminates, even with small number of posts. This channel has only 28."""
+		"""Test scraping always terminates, even with small number of posts. This channel's highest ID is 28."""
 
 		def scrape_small_channel():
 			scraper = TelegramChannelScraper('AKCPB')
@@ -392,8 +392,8 @@ class TestTelegramChannelScraper(unittest.TestCase):
 		
 		self.execute_with_timeout(scrape_small_channel)
 
-	def test_scraping_termination_channels_without_post_id_one(self):
-		"""Test scraping gracefully handles channels missing a post where id=1."""
+	def test_scraping_termination_pages_without_posts(self):
+		"""Test scraping gracefully handles pages without any posts."""
 
 		def scrape_empty_page():
 			scraper = TelegramChannelScraper('BREAKDCODE?before=3')
@@ -407,10 +407,11 @@ class TestTelegramChannelScraper(unittest.TestCase):
 		scraper = TelegramChannelScraper('nexta_live?before=43103')
 		item = next(scraper.get_items(), None)
 		self.assertIsNotNone(item, "Failed to scrape any posts.")
+
+		# This particular post is known to include media [Video, Photo, Video]
 		self.assertEqual(item.url, "https://t.me/s/nexta_live/43102")
 
-		# Directly validate the types of the objects in the media array
-		expected_types = [Video, Photo, Video]  # Adjust based on expected types
+		expected_types = [Video, Photo, Video]
 		actual_types = [type(media) for media in item.media] if item.media else []
 		
 		self.assertEqual(actual_types, expected_types, "Media did not appear in the expected order.")
