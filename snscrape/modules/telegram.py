@@ -9,6 +9,8 @@ import re
 import snscrape.base
 import typing
 import urllib.parse
+import unittest
+import threading
 
 _logger = logging.getLogger(__name__)
 _SINGLE_MEDIA_LINK_PATTERN = re.compile(r'^https://t\.me/[^/]+/\d+\?single$')
@@ -212,6 +214,8 @@ class TelegramChannelScraper(snscrape.base.Scraper):
 			return
 		nextPageUrl = ''
 		while True:
+			if soup.find("div", class_ = "tme_no_messages_found"):
+				break
 			yield from self._soup_to_items(soup, r.url)
 			dateElt = soup.find('a', attrs = {'class': 'tgme_widget_message_date'}, href = True)
 			if dateElt and 'href' in dateElt.attrs:
@@ -331,3 +335,84 @@ def _parse_video_message(videoPlayer):
 		durationStr = videoPlayer.find('time').text
 		mKwargs['duration'] = _durationStrToSeconds(durationStr)
 	return cls(**mKwargs)
+
+class TestTelegramChannelScraper(unittest.TestCase):
+
+	@staticmethod
+	def execute_with_timeout(func, timeout=10):
+		"""
+		Executes a function in a separate thread and enforces a timeout.
+		If provided function throws an error, it's re-raised in main thread.
+		Used to detect infinite loops in finite time, works cross-platform.
+		
+		:param func: The function to execute. This function should accept no arguments.
+		:param timeout: The timeout in seconds.
+		"""
+		exceptions=[]
+		def func_passing_exceptions():
+			try:
+				func()
+			except Exception as e:
+				exceptions.append((e.__class__, e, e.__traceback__))
+
+		thread = threading.Thread(target=func_passing_exceptions)
+		thread.start()
+		thread.join(timeout=timeout)
+
+		if exceptions:
+			exc_class, exc_instance, traceback = exceptions[0]
+			raise exc_class(exc_instance).with_traceback(traceback)
+		
+		if thread.is_alive():
+			raise TimeoutError(f"Function didn't complete within {timeout} seconds")
+
+	def test_scraping_termination_missing_prev(self):
+		"""Test scraping always terminates, even if the page's prev link is missing."""
+
+		def scrape_two_pages():
+			scraper = TelegramChannelScraper('WLM_USA_TEXAS?before=3766')
+			items = list()
+			num_items_on_page = 20
+			for item in scraper.get_items():
+				items.append(item)
+				if len(items) > 2 * num_items_on_page:
+					break
+		
+		self.execute_with_timeout(scrape_two_pages)
+
+	def test_scraping_termination_small_post_count(self):
+		"""Test scraping always terminates, even with small number of posts. This channel has only 28."""
+
+		def scrape_small_channel():
+			scraper = TelegramChannelScraper('AKCPB')
+			items = list(scraper.get_items())
+			return items
+		
+		self.execute_with_timeout(scrape_small_channel)
+
+	def test_scraping_termination_channels_without_post_id_one(self):
+		"""Test scraping gracefully handles channels missing a post where id=1."""
+
+		def scrape_empty_page():
+			scraper = TelegramChannelScraper('BREAKDCODE?before=3')
+			for _ in scraper.get_items():
+				pass
+		
+		self.execute_with_timeout(scrape_empty_page)
+
+	def test_media_order_preservation(self):
+		"""Test scraped media appears in the same order as in the post."""
+		scraper = TelegramChannelScraper('nexta_live?before=43103')
+		item = next(scraper.get_items(), None)
+		self.assertIsNotNone(item, "Failed to scrape any posts.")
+		self.assertEqual(item.url, "https://t.me/s/nexta_live/43102")
+
+		# Directly validate the types of the objects in the media array
+		expected_types = [Video, Photo, Video]  # Adjust based on expected types
+		actual_types = [type(media) for media in item.media] if item.media else []
+		
+		self.assertEqual(actual_types, expected_types, "Media did not appear in the expected order.")
+
+
+if __name__ == '__main__':
+	unittest.main()
