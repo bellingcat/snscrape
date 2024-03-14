@@ -336,7 +336,9 @@ def _parse_video_message(videoPlayer):
 		mKwargs['duration'] = _durationStrToSeconds(durationStr)
 	return cls(**mKwargs)
 
+
 class TestTelegramChannelScraper(unittest.TestCase):
+	"""Run suite by directly calling this file."""
 
 	@staticmethod
 	def execute_with_timeout(func, timeout=10):
